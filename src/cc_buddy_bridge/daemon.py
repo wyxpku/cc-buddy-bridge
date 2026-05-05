@@ -288,7 +288,7 @@ class Daemon:
         decision_class = classify_command(hint, self.matchers)
         if decision_class == "allow":
             log.info("pretooluse for %s (%s): auto_allow match → allow", tool_name, hint[:60])
-            return {"ok": True, "decision": "allow"}
+            return {"ok": True, "decision": "allow", "reason": "auto_allow"}
 
         # If BLE isn't connected, skip the round-trip and return no decision so
         # Claude Code's normal flow runs (respects user's auto/allow settings).
@@ -330,7 +330,7 @@ class Daemon:
             self._permission_futures.pop(tool_use_id, None)
             self.state.permission_resolved(tool_use_id)
             await self._push_heartbeat()
-        return {"ok": True, "decision": decision}
+        return {"ok": True, "decision": decision, "reason": "always_ask"}
 
     # ---- BLE handler ----
 

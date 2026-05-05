@@ -52,15 +52,18 @@ def main() -> int:
         # Daemon unreachable or errored — defer to Claude Code's default behavior.
         return 0
     decision = resp.get("decision")
+    reason = resp.get("reason", "")
     if decision not in ("allow", "deny", "ask"):
         return 0
     out = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": decision,
+            "permissionDecisionReason": reason or f"cc-buddy-bridge: {decision}",
         }
     }
     sys.stdout.write(json.dumps(out) + "\n")
+    sys.stdout.flush()
     return 0
 
 
