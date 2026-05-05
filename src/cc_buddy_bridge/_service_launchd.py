@@ -32,7 +32,7 @@ def _build_plist() -> bytes:
     """
     plist = {
         "Label": LABEL,
-        "ProgramArguments": [sys.executable, "-m", "cc_buddy_bridge.cli", "daemon"],
+        "ProgramArguments": [sys.executable, "-m", "cc_buddy_bridge.cli", "daemon", "--foreground"],
         "RunAtLoad": True,
         "KeepAlive": True,
         "ProcessType": "Interactive",

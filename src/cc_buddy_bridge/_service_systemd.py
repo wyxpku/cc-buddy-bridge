@@ -36,7 +36,7 @@ def _build_unit() -> str:
         "\n"
         "[Service]\n"
         "Type=simple\n"
-        f"ExecStart={sys.executable} -m cc_buddy_bridge.cli daemon\n"
+        f"ExecStart={sys.executable} -m cc_buddy_bridge.cli daemon --foreground\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
         "\n"
