@@ -101,7 +101,24 @@ class BuddyBLE:
                 async with BleakClient(device) as client:
                     self._client = client
                     self._assembler = LineAssembler()
-                    await client.start_notify(NUS_TX_UUID, self._on_notify)
+                    # The peripheral uses LE Secure Connections with passkey-entry
+                    # pairing (ESP_IO_CAP_OUT).  On first connection macOS shows a
+                    # system dialog for the user to enter the passkey displayed on
+                    # the device.  start_notify fails with "Encryption is insufficient"
+                    # while pairing is in progress; retry until it completes or we
+                    # time out.  Subsequent connections reuse the bond and skip this.
+                    for _attempt in range(12):
+                        try:
+                            await client.start_notify(NUS_TX_UUID, self._on_notify)
+                            break
+                        except Exception as notify_err:
+                            if "Encryption is insufficient" not in str(notify_err):
+                                raise
+                            if _attempt == 0:
+                                log.info("passkey pairing in progress — enter the code shown on the device")
+                            await asyncio.sleep(5.0)
+                    else:
+                        raise
                     self._connected_evt.set()
                     connect_ts = time.monotonic()
                     log.info("connected, subscribed to TX notify")

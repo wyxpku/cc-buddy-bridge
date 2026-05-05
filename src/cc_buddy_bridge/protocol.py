@@ -141,31 +141,20 @@ class LineAssembler:
 # ---- sanitization ----
 
 def sanitize_for_stick(text: str) -> str:
-    """Strip anything the stick's bitmap font can't safely render.
+    """Strip anything the stick's efontCN_12 font can't render.
 
-    Initially we thought we only had to drop supplementary-plane codepoints
-    (emojis), because BMP chars like CJK "just rendered as empty boxes".
-    Empirical testing (2026-04-22) showed that's wrong: pushing entries
-    containing CJK UTF-8 bytes (``0xE9 0x87 0x8D`` for "重" etc.) reliably
-    disconnected the stick ~1s after the heartbeat write.
-
-    Hypothesis: the firmware's Adafruit-GFX bitmap font table is ASCII-only,
-    so a multi-byte leading byte (0x80–0xFF) becomes an out-of-range index —
-    garbage reads in some paths, a hard fault in others. Either way, anything
-    non-ASCII is a poison pill.
-
-    Policy: keep only ASCII printable (``0x20``–``0x7E``) plus tab. Strip
-    everything else — control chars, high-bit bytes, CJK, fullwidth punct,
-    emojis — to '?'. Stable takes priority over expressiveness; a Chinese
-    entry becomes a row of '?'s which at least tells the viewer "something
-    happened".
+    The firmware now uses M5GFX's built-in efontCN_12 (U8g2 format, 7545 CJK
+    glyphs) with full UTF-8 decoding.  BMP characters (U+0000–U+FFFF) —
+    including CJK, fullwidth punctuation, and Latin extended — are passed
+    through.  Supplementary-plane codepoints (emoji, rare CJK extensions) are
+    replaced with '?' because the font has no glyphs for them.
     """
     if not text:
         return text
     out = []
     for ch in text:
         cp = ord(ch)
-        if 0x20 <= cp <= 0x7E:
+        if cp <= 0xFFFF and (cp >= 0x20 or ch == "\t"):
             out.append(ch)
         elif ch == "\t":
             out.append(ch)
