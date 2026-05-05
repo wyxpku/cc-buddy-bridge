@@ -1,8 +1,11 @@
 # cc-buddy-bridge
 
+**English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+
 [![test](https://github.com/SnowWarri0r/cc-buddy-bridge/actions/workflows/test.yml/badge.svg)](https://github.com/SnowWarri0r/cc-buddy-bridge/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](#requirements)
 [![Status: daily-driven](https://img.shields.io/badge/status-daily--driven-brightgreen.svg)](#status)
 [![PRs: Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/SnowWarri0r/cc-buddy-bridge/issues)
 
@@ -15,6 +18,15 @@ lets you drive the same hardware from a plain terminal running the `claude` CLI,
 so your desk pet reacts to CLI sessions: sleeps when idle, gets busy when a
 tool call runs, blinks when a permission prompt needs your attention, and lets
 you approve or deny right from the stick's buttons.
+
+## What you get
+
+- **Physical 2FA for risky tools** — set `defaultMode: bypassPermissions` everywhere except the desk buddy. A/B buttons on the stick decide allow/deny for the few operations you flagged on `permissions.ask`.
+- **Smart matcher** — auto-allow trivial Bash (`ls`/`cat`/`grep`/...), always-ask risky (`rm`/`curl`/`git push`/...), defer the rest to the stick. TOML-overridable.
+- **Live stick HUD** — assistant replies mirror to the stick within ~500 ms via a JSONL tailer (no Stop-hook flush race).
+- **Statusline** — `cc-buddy-bridge hud` renders battery / encryption / pending prompts in your prompt bar; composes with [claude-hud](https://github.com/jarrodwatts/claude-hud).
+- **One-command install + autostart** — `cc-buddy-bridge install --service` picks the right backend per OS: launchd (macOS), systemd user unit (Linux), Task Scheduler (Windows).
+- **Custom GIF characters** — `cc-buddy-bridge push-character ./pack/` uploads a folder of frames over BLE with chunked flow control.
 
 ## How it works
 
@@ -170,7 +182,11 @@ another statusline plugin? You can compose both — wrap them in a small
 shell script and concatenate outputs; statusLine accepts multi-line
 responses.
 
-Sample output:
+Live in iTerm2 — paw print, battery progress bar, encryption lock, running session count:
+
+<p align="center"><img src="docs/img/statusline.png" alt="cc-buddy-bridge hud — paw, full green battery bar, 100%, lock, 1run" width="436"></p>
+
+Other states the same line goes through:
 
 ```
 🐾 🔋 96% 🔒              # healthy, encrypted link
@@ -291,32 +307,24 @@ a fresh 6-digit passkey pairing.
 
 ## Status
 
-Daily-driver complete. The author runs it on every Claude Code session.
+Daily-driver complete — the author runs it on every Claude Code session.
 
-**Core protocol**
+**Battle-tested infra**
 
-* Heartbeat — sessions / tokens / entries / pending prompt
-* Permission round-trip — stick A/B buttons decide; signed back into Claude Code
-* Folder push — upload GIF character packs over BLE with flow control
-* Fresh BLE pairing — MITM + bonding + DisplayOnly passkey, end-to-end tested
+* Fresh BLE pairing — MITM + bonding + DisplayOnly passkey, end-to-end
+* Reconnection — exponential backoff + multi-daemon guard (refuse to start if another instance owns the socket)
+* Folder push — chunked flow control, 1.8 MB pack cap, per-chunk acks
+* Stick status polling — battery / encryption / fs free every 60 s
+* Logging — rotating file, per-component levels, structured permission round-trip traces
 
-**Workflow**
+**Tests + CI**
 
-* Smart matcher — auto-allow trivial Bash (`ls`/`cat`/`grep`/...), always-ask risky (`rm`/`curl`/`git push`/...), defer the rest
-* Live assistant text — JSONL tailer fires entry-emit within ~500 ms of the message hitting disk; no Stop-hook lag
-* Turn-end notification — macOS Notification Center banner + Glass sound + stick `celebrate` animation, fires the moment a turn finishes
-* Status-line `hud` subcommand — emoji bar with battery progress, encryption, pending prompts; composes alongside claude-hud
-
-**Operations**
-
-* macOS launchd service — auto-start on login, restart on crash
-* Stick status polling — battery %, link encryption, fs free
-* Exponential reconnect backoff + multi-daemon guard + resilient logging
+* 98 unit tests covering state, protocol, installer, hud, matchers, JSONL tailer, folder push, service backends
+* GitHub Actions matrix across Python 3.11 / 3.12 / 3.13
 
 **Backlog**
 
-* Linux systemd user unit — see [issue #4](https://github.com/SnowWarri0r/cc-buddy-bridge/issues/4); help wanted
-* Anything else — open an issue
+* Open an issue — any rough edge, a quirk you hit, a feature you want, a platform that misbehaves
 
 ## License
 
