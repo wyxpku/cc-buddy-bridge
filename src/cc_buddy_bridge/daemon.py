@@ -10,7 +10,7 @@ from typing import Any, Optional
 from .ble import BuddyBLE
 from .ipc import IPCServer
 from .jsonl_tailer import JSONLTailer
-from .matchers import MatcherConfig, classify_command, load_config as load_matcher_config
+from .matchers import MatcherConfig, classify_tool, load_config as load_matcher_config
 from .protocol import (
     HEARTBEAT_KEEPALIVE,
     build_heartbeat,
@@ -285,7 +285,7 @@ class Daemon:
         # auto_allow → approve immediately, no stick prompt (keeps ls/cat fast).
         # always_ask → force stick prompt even if Claude Code would auto-approve.
         # default    → no decision, let Claude Code's native permission flow run.
-        decision_class = classify_command(hint, self.matchers)
+        decision_class = classify_tool(tool_name, hint, self.matchers)
         if decision_class == "allow":
             log.info("pretooluse for %s (%s): auto_allow match → allow", tool_name, hint[:60])
             return {"ok": True, "decision": "allow", "reason": "auto_allow"}
@@ -307,7 +307,9 @@ class Daemon:
             "permission request: tool=%s id=%s hint=%r waiting up to %.0fs",
             tool_name, tool_use_id, hint[:80], PERMISSION_WAIT_SECS,
         )
-        pending = self.state.permission_pending(session_id, tool_use_id, tool_name, hint)
+        choices = req.get("choices") or []
+        pending = self.state.permission_pending(session_id, tool_use_id, tool_name, hint,
+                                                choices=choices)
         fut: asyncio.Future[str] = asyncio.get_running_loop().create_future()
         self._permission_futures[tool_use_id] = fut
         try:
@@ -344,6 +346,9 @@ class Daemon:
                 return
             # Map REFERENCE.md's "once" to Claude Code's "allow".
             mapped = "allow" if decision == "once" else "deny"
+            choice_idx = obj.get("choice")  # may be None for binary mode
+            if choice_idx is not None:
+                log.debug("device selected choice %d", choice_idx)
             fut = self._permission_futures.get(tool_use_id or "")
             if fut is not None and not fut.done():
                 log.info(
