@@ -68,3 +68,18 @@ def test_first_pending_picks_oldest():
     time.sleep(0.01)
     s.permission_pending("b", "t2", "Edit", "cmd2")
     assert s.first_pending() is p_a
+
+
+def test_permission_pending_carries_choices():
+    s = State()
+    s.session_start("x")
+    p = s.permission_pending("x", "tid_1", "AskUserQuestion", "Which lib?", choices=["React", "Vue"])
+    assert p.choices == ["React", "Vue"]
+    assert s.first_pending() is p
+
+
+def test_permission_pending_default_no_choices():
+    s = State()
+    s.session_start("x")
+    p = s.permission_pending("x", "tid_1", "Bash", "rm -rf /tmp")
+    assert p.choices == []

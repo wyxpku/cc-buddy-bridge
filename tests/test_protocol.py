@@ -183,3 +183,20 @@ def test_turn_event_sanitizes_nested_content():
     evt = build_turn_event("assistant", [{"type": "text", "text": "done 🎉"}])
     assert evt is not None
     assert "🎉" not in evt["content"][0]["text"]
+
+
+def test_heartbeat_with_pending_choices():
+    s = State()
+    s.session_start("x")
+    s.permission_pending("x", "tid_1", "AskUserQuestion", "Which lib?",
+                         choices=["React", "Vue", "Svelte"])
+    hb = build_heartbeat(s)
+    assert hb["prompt"]["choices"] == ["React", "Vue", "Svelte"]
+
+
+def test_heartbeat_without_choices_omits_field():
+    s = State()
+    s.session_start("x")
+    s.permission_pending("x", "tid_1", "Bash", "rm -rf /tmp")
+    hb = build_heartbeat(s)
+    assert "choices" not in hb["prompt"]

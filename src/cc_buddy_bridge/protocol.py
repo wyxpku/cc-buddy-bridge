@@ -64,6 +64,10 @@ def build_heartbeat(state: State, msg: Optional[str] = None) -> dict[str, Any]:
             "tool": sanitize_for_stick(pending.tool_name),
             "hint": sanitize_for_stick(pending.hint[:120]),
         }
+        if pending.choices:
+            snapshot["prompt"]["choices"] = [
+                sanitize_for_stick(c[:80]) for c in pending.choices
+            ]
     return snapshot
 
 

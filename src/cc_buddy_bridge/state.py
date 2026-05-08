@@ -16,6 +16,7 @@ class PendingPermission:
     hint: str
     session_id: str
     issued_at: float  # monotonic seconds
+    choices: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -85,6 +86,7 @@ class State:
         tool_use_id: str,
         tool_name: str,
         hint: str,
+        choices: list[str] | None = None,
     ) -> PendingPermission:
         p = PendingPermission(
             tool_use_id=tool_use_id,
@@ -92,6 +94,7 @@ class State:
             hint=hint,
             session_id=session_id,
             issued_at=time.monotonic(),
+            choices=choices or [],
         )
         s = self.sessions.get(session_id)
         if s is None:
