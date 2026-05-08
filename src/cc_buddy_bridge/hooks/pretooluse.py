@@ -37,14 +37,28 @@ def _summarize(tool_input: object) -> str:
     return ""
 
 
+def _extract_choices(tool_name: str, tool_input: dict) -> list[str]:
+    """Extract option labels from AskUserQuestion tool input."""
+    if tool_name != "AskUserQuestion":
+        return []
+    questions = tool_input.get("questions", [])
+    if not questions:
+        return []
+    options = questions[0].get("options", [])
+    return [o.get("label", "") for o in options[:4] if o.get("label")]
+
+
 def main() -> int:
     payload = read_hook_input()
+    tool_input = payload.get("tool_input") or {}
+    tool_name = payload.get("tool_name", "")
     event = {
         "evt": "pretooluse",
         "session_id": payload.get("session_id", ""),
         "tool_use_id": payload.get("tool_use_id", ""),
-        "tool_name": payload.get("tool_name", ""),
-        "hint": _summarize(payload.get("tool_input")),
+        "tool_name": tool_name,
+        "hint": _summarize(tool_input),
+        "choices": _extract_choices(tool_name, tool_input),
         "cwd": payload.get("cwd", ""),
     }
     resp = post(event, timeout=BLOCK_TIMEOUT_SECS)
