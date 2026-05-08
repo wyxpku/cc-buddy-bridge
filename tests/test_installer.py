@@ -61,7 +61,7 @@ def test_uninstall_removes_only_our_entries(temp_settings: Path) -> None:
         "hooks": {
             "PreToolUse": [
                 {
-                    "matcher": "Bash",
+                    "matcher": "*",
                     "hooks": [
                         {"type": "command", "command": "/path/to/unrelated-hook", "timeout": 5},
                     ],
@@ -72,18 +72,18 @@ def test_uninstall_removes_only_our_entries(temp_settings: Path) -> None:
     _write(temp_settings, baseline)
     installer.install_hooks()
 
-    # Now install added our Bash hook alongside the user's.
+    # Now install added our hook alongside the user's in the * group.
     after_install = json.loads(temp_settings.read_text())
-    bash_group = after_install["hooks"]["PreToolUse"][0]
-    assert bash_group["matcher"] == "Bash"
-    assert len(bash_group["hooks"]) == 2
+    star_group = after_install["hooks"]["PreToolUse"][0]
+    assert star_group["matcher"] == "*"
+    assert len(star_group["hooks"]) == 2
 
     assert installer.uninstall_hooks() == 0
     after_uninstall = json.loads(temp_settings.read_text())
     # User's unrelated hook survived.
-    bash_group = after_uninstall["hooks"]["PreToolUse"][0]
-    assert len(bash_group["hooks"]) == 1
-    assert bash_group["hooks"][0]["command"] == "/path/to/unrelated-hook"
+    star_group = after_uninstall["hooks"]["PreToolUse"][0]
+    assert len(star_group["hooks"]) == 1
+    assert star_group["hooks"][0]["command"] == "/path/to/unrelated-hook"
 
 
 def test_uninstall_drops_empty_hooks_block(temp_settings: Path) -> None:
