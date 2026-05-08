@@ -51,6 +51,9 @@ class State:
         # ``completed: true`` — the firmware's celebrate-animation trigger.
         # Pulsed by turn_end, observed by build_heartbeat.
         self.completed_until: float = 0.0
+        # Non-blocking notification prompt (e.g. AskUserQuestion choices).
+        # Shown on the device as informational only — no pending permission.
+        self._notification: Optional[dict] = None
 
     # ---- session lifecycle ----
 
@@ -136,6 +139,23 @@ class State:
     @property
     def is_celebrating(self) -> bool:
         return time.monotonic() < self.completed_until
+
+    # ---- notification (non-blocking) ----
+
+    def set_notification(self, tool_use_id: str, hint: str, choices: list[str]) -> None:
+        self._notification = {
+            "tool_use_id": tool_use_id,
+            "hint": hint,
+            "choices": choices,
+        }
+
+    def clear_notification(self, tool_use_id: str) -> None:
+        if self._notification is not None and self._notification["tool_use_id"] == tool_use_id:
+            self._notification = None
+
+    @property
+    def notification(self) -> Optional[dict]:
+        return self._notification
 
     # ---- entries ----
 

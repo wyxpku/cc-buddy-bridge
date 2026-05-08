@@ -32,6 +32,14 @@ TokensCallback = Callable[[int, int, list[tuple[float, str]]], Awaitable[None]]
 # Async (transcript_path, text, uuid) -> None. Skipped for tool_use-only turns.
 AssistantTextCallback = Callable[[str, str, str], Awaitable[None]]
 
+# Callback fired when a tool_use block is found in an assistant message.
+# Async (tool_use_id, tool_name, tool_input) -> None.
+ToolUseCallback = Callable[[str, str, dict], Awaitable[None]]
+
+# Callback fired when a tool_result block is found in a user message.
+# Async (tool_use_id) -> None.
+ToolResultCallback = Callable[[str], Awaitable[None]]
+
 
 class JSONLTailer:
     """Incrementally reads every transcript JSONL, tracks file offsets so we only
@@ -42,9 +50,13 @@ class JSONLTailer:
         on_update: TokensCallback,
         root: Path = TRANSCRIPT_ROOT,
         on_assistant_text: Optional[AssistantTextCallback] = None,
+        on_tool_use: Optional[ToolUseCallback] = None,
+        on_tool_result: Optional[ToolResultCallback] = None,
     ) -> None:
         self.on_update = on_update
         self.on_assistant_text = on_assistant_text
+        self.on_tool_use = on_tool_use
+        self.on_tool_result = on_tool_result
         self.root = root
         # file path → (offset, session_tokens_output, per_day_tokens_output)
         self._offsets: dict[str, int] = {}
@@ -65,6 +77,10 @@ class JSONLTailer:
         # Deferred callbacks collected during _consume_obj (which is sync).
         # Fired from the awatch loop (async context).
         self._pending_assistant_emits: list[tuple[str, str, str]] = []
+        self._pending_tool_use_emits: list[tuple[str, str, dict]] = []
+        self._pending_tool_result_emits: list[str] = []
+        # file path → set of record uuids whose tool_use blocks we've emitted.
+        self._emitted_tool_use_uuids: dict[str, set[str]] = {}
 
     async def run(self) -> None:
         if not self.root.exists():
@@ -91,16 +107,41 @@ class JSONLTailer:
             log.exception("jsonl tailer crashed")
 
     async def _fire_pending_emits(self) -> None:
-        if not self._pending_assistant_emits or self.on_assistant_text is None:
+        # Assistant text callbacks
+        if self._pending_assistant_emits and self.on_assistant_text is not None:
+            to_fire = self._pending_assistant_emits[:]
             self._pending_assistant_emits.clear()
-            return
-        to_fire = self._pending_assistant_emits[:]
-        self._pending_assistant_emits.clear()
-        for path, text, uuid in to_fire:
-            try:
-                await self.on_assistant_text(path, text, uuid)
-            except Exception:  # noqa: BLE001
-                log.exception("on_assistant_text callback failed")
+            for path, text, uuid in to_fire:
+                try:
+                    await self.on_assistant_text(path, text, uuid)
+                except Exception:  # noqa: BLE001
+                    log.exception("on_assistant_text callback failed")
+        else:
+            self._pending_assistant_emits.clear()
+
+        # Tool use callbacks
+        if self._pending_tool_use_emits and self.on_tool_use is not None:
+            to_fire = self._pending_tool_use_emits[:]
+            self._pending_tool_use_emits.clear()
+            for tool_use_id, tool_name, tool_input in to_fire:
+                try:
+                    await self.on_tool_use(tool_use_id, tool_name, tool_input)
+                except Exception:  # noqa: BLE001
+                    log.exception("on_tool_use callback failed")
+        else:
+            self._pending_tool_use_emits.clear()
+
+        # Tool result callbacks
+        if self._pending_tool_result_emits and self.on_tool_result is not None:
+            to_fire = self._pending_tool_result_emits[:]
+            self._pending_tool_result_emits.clear()
+            for tool_use_id in to_fire:
+                try:
+                    await self.on_tool_result(tool_use_id)
+                except Exception:  # noqa: BLE001
+                    log.exception("on_tool_result callback failed")
+        else:
+            self._pending_tool_result_emits.clear()
 
     def _seed_emitted_from_history(self) -> None:
         """After initial sweep, scan each transcript and record every assistant
@@ -218,6 +259,41 @@ class JSONLTailer:
                                         (path, block["text"].strip(), record_uuid)
                                     )
                                     break
+
+                # Detect tool_use blocks (e.g. AskUserQuestion) in assistant messages.
+                if self._initial_sweep_done and self.on_tool_use is not None:
+                    record_uuid = obj.get("uuid") or ""
+                    if record_uuid:
+                        tool_seen = self._emitted_tool_use_uuids.setdefault(path, set())
+                        if record_uuid not in tool_seen:
+                            for block in content:
+                                if (
+                                    isinstance(block, dict)
+                                    and block.get("type") == "tool_use"
+                                ):
+                                    tool_name = block.get("name", "")
+                                    tool_use_id = block.get("id", "")
+                                    tool_input = block.get("input", {})
+                                    if tool_name and tool_use_id:
+                                        tool_seen.add(record_uuid)
+                                        self._pending_tool_use_emits.append(
+                                            (tool_use_id, tool_name, tool_input)
+                                        )
+                                        break  # one emit per record
+
+        # Detect tool_result blocks in user messages (e.g. user answered AskUserQuestion).
+        elif msg.get("role") == "user":
+            if self._initial_sweep_done and self.on_tool_result is not None:
+                content = msg.get("content")
+                if isinstance(content, list):
+                    for block in content:
+                        if (
+                            isinstance(block, dict)
+                            and block.get("type") == "tool_result"
+                        ):
+                            tool_use_id = block.get("tool_use_id", "")
+                            if tool_use_id:
+                                self._pending_tool_result_emits.append(tool_use_id)
 
         usage = msg.get("usage")
         if not isinstance(usage, dict):

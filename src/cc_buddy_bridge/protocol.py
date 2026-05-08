@@ -68,6 +68,20 @@ def build_heartbeat(state: State, msg: Optional[str] = None) -> dict[str, Any]:
             snapshot["prompt"]["choices"] = [
                 sanitize_for_stick(c[:80]) for c in pending.choices
             ]
+    elif state.notification is not None:
+        # Non-blocking notification (e.g. AskUserQuestion choices).
+        # Real permissions take priority; notifications fill the prompt slot
+        # only when no blocking permission is active.
+        notif = state.notification
+        snapshot["prompt"] = {
+            "id": notif["tool_use_id"],
+            "tool": "AskUserQuestion",
+            "hint": sanitize_for_stick(notif["hint"][:120]),
+        }
+        if notif["choices"]:
+            snapshot["prompt"]["choices"] = [
+                sanitize_for_stick(c[:80]) for c in notif["choices"]
+            ]
     return snapshot
 
 

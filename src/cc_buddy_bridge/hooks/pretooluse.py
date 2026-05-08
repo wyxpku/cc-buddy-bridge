@@ -50,8 +50,15 @@ def _extract_choices(tool_name: str, tool_input: dict) -> list[str]:
 
 def main() -> int:
     payload = read_hook_input()
-    tool_input = payload.get("tool_input") or {}
     tool_name = payload.get("tool_name", "")
+
+    # AskUserQuestion is displayed on the device as a non-blocking notification
+    # via the transcript watcher (not via the hook permission flow).  Returning
+    # empty stdout lets Claude Code's native AskUserQuestion UI run normally.
+    if tool_name == "AskUserQuestion":
+        return 0
+
+    tool_input = payload.get("tool_input") or {}
     event = {
         "evt": "pretooluse",
         "session_id": payload.get("session_id", ""),

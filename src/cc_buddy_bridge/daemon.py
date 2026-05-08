@@ -43,7 +43,12 @@ class Daemon:
             name_prefix=device_name_prefix,
             address=device_address,
         )
-        self.jsonl = JSONLTailer(self._on_tokens, on_assistant_text=self._on_assistant_text)
+        self.jsonl = JSONLTailer(
+            self._on_tokens,
+            on_assistant_text=self._on_assistant_text,
+            on_tool_use=self._on_tool_use,
+            on_tool_result=self._on_tool_result,
+        )
         self.matchers = matchers if matchers is not None else load_matcher_config()
         # tool_use_id → Future resolving to "allow" | "deny"
         self._permission_futures: dict[str, asyncio.Future[str]] = {}
@@ -440,6 +445,34 @@ class Daemon:
         log.info("tailer: new assistant text → entry added (state.entries=%d)",
                  len(self.state.entries))
         await self._push_heartbeat(force=True)
+
+    async def _on_tool_use(self, tool_use_id: str, tool_name: str, tool_input: dict) -> None:
+        """Fired by the JSONL tailer when a tool_use block appears in the
+        transcript. Currently only handles AskUserQuestion — sends the
+        choices to the device as a non-blocking notification."""
+        if tool_name != "AskUserQuestion":
+            return
+        questions = tool_input.get("questions", [])
+        if not questions:
+            return
+        options = questions[0].get("options", [])
+        choices = [o.get("label", "") for o in options[:4] if o.get("label")]
+        question_text = questions[0].get("question", "")
+        hint = question_text[:80] if question_text else "Choose an option"
+        log.info("tailer: AskUserQuestion notification id=%s choices=%d",
+                 tool_use_id, len(choices))
+        self.state.set_notification(tool_use_id, hint, choices)
+        await self._push_heartbeat(force=True)
+
+    async def _on_tool_result(self, tool_use_id: str) -> None:
+        """Fired by the JSONL tailer when a tool_result block appears in the
+        transcript. Clears any matching AskUserQuestion notification."""
+        notif = self.state.notification
+        if notif is not None and notif["tool_use_id"] == tool_use_id:
+            log.info("tailer: AskUserQuestion answered (tool_result), clearing notification id=%s",
+                     tool_use_id)
+            self.state.clear_notification(tool_use_id)
+            await self._push_heartbeat()
 
     async def _heartbeat_after(self, delay: float) -> None:
         """Schedule one heartbeat push after ``delay`` seconds. Used by the
