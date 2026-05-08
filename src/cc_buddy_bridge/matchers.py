@@ -163,6 +163,7 @@ DEFAULT_ALWAYS_ASK: tuple[str, ...] = (
 class MatcherConfig:
     auto_allow: tuple[re.Pattern[str], ...] = field(default_factory=tuple)
     always_ask: tuple[re.Pattern[str], ...] = field(default_factory=tuple)
+    always_ask_tools: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _config_path() -> Path:
@@ -191,6 +192,8 @@ def load_config(path: Path | None = None) -> MatcherConfig:
     auto_allow_patterns: list[str] = list(DEFAULT_AUTO_ALLOW)
     always_ask_patterns: list[str] = list(DEFAULT_ALWAYS_ASK)
 
+    always_ask_tools: tuple[str, ...] = ()
+
     if target.exists():
         try:
             import tomllib  # stdlib (Python 3.11+)
@@ -211,9 +214,14 @@ def load_config(path: Path | None = None) -> MatcherConfig:
             auto_allow_patterns = list(DEFAULT_AUTO_ALLOW) + list(user_auto_allow)
             always_ask_patterns = list(DEFAULT_ALWAYS_ASK) + list(user_always_ask)
 
+        always_ask_tools = tuple(
+            data.get("always_ask_tools", []) if isinstance(data.get("always_ask_tools"), list) else []
+        )
+
     return MatcherConfig(
         auto_allow=_compile(auto_allow_patterns),
         always_ask=_compile(always_ask_patterns),
+        always_ask_tools=always_ask_tools,
     )
 
 
@@ -232,3 +240,13 @@ def classify_command(command: str, cfg: MatcherConfig) -> Decision:
         if pat.search(command):
             return "allow"
     return "default"
+
+
+def classify_tool(tool_name: str, hint: str, cfg: MatcherConfig) -> Decision:
+    """Tool-aware classification. AskUserQuestion always surfaces on device."""
+    if tool_name == "AskUserQuestion":
+        return "ask"
+    if tool_name in cfg.always_ask_tools:
+        return "ask"
+    # For Bash and other tools, classify by hint text
+    return classify_command(hint, cfg)

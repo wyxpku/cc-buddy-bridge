@@ -10,6 +10,7 @@ import pytest
 from cc_buddy_bridge.matchers import (
     MatcherConfig,
     classify_command,
+    classify_tool,
     load_config,
 )
 
@@ -123,3 +124,35 @@ def test_load_config_bad_toml_falls_back_to_defaults(tmp_path: Path):
     cfg_path.write_text("this is {not} [valid toml", encoding="utf-8")
     cfg = load_config(path=cfg_path)
     assert classify_command("ls", cfg) == "allow"
+
+
+# ---- classify_tool: tool-aware dispatch ----
+
+def test_ask_user_question_is_always_ask(defaults: MatcherConfig):
+    assert classify_tool("AskUserQuestion", "", defaults) == "ask"
+
+
+def test_ask_user_question_with_choices_is_ask(defaults: MatcherConfig):
+    assert classify_tool("AskUserQuestion", "pick one", defaults) == "ask"
+
+
+def test_bash_routes_to_command_classifier(defaults: MatcherConfig):
+    assert classify_tool("Bash", "rm -rf /tmp", defaults) == "ask"
+    assert classify_tool("Bash", "ls -la", defaults) == "allow"
+    assert classify_tool("Bash", "custom", defaults) == "default"
+
+
+def test_unknown_tool_is_default(defaults: MatcherConfig):
+    assert classify_tool("Edit", "main.py", defaults) == "default"
+    assert classify_tool("Write", "output.txt", defaults) == "default"
+
+
+def test_always_ask_tools_in_config(tmp_path: Path):
+    cfg_path = tmp_path / "matchers.toml"
+    cfg_path.write_text(
+        'always_ask_tools = ["MCP"]\n',
+        encoding="utf-8",
+    )
+    cfg = load_config(path=cfg_path)
+    assert classify_tool("MCP", "some tool", cfg) == "ask"
+    assert classify_tool("Edit", "main.py", cfg) == "default"
